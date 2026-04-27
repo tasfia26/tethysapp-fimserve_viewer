@@ -170,30 +170,35 @@ reads top-to-bottom; each box is one thing the server does, in order:
 
 ```mermaid
 flowchart TD
-    User([You click<br/>'Generate Flood Map']):::user
+    User([You click 'Generate Flood Map']):::user
 
-    subgraph S1[Step 1 — Download watershed data]
+    subgraph S1["Step 1 — Download watershed data"]
         direction TB
-        T1[Server asks FIMserv:<br/>'give me HAND data for HUC 06010105']
-        T1 --> Cloud1[(CIROH cloud bucket<br/>has pre-computed HAND<br/>for every US watershed)]
-        Cloud1 --> Files1[/Saves locally:<br/>• terrain heights (HAND raster)<br/>• discharge → stage lookup table<br/>• river segment shapes/]
+        T1["Server asks FIMserv: get HAND data for this HUC8"]
+        Cloud1[("CIROH cloud bucket - pre-computed HAND for every US watershed")]
+        Files1["Saves locally: terrain heights, discharge-to-stage lookup table, river segment shapes"]
+        T1 --> Cloud1 --> Files1
     end
 
-    subgraph S2[Step 2 — Get streamflow for your date]
+    subgraph S2["Step 2 — Get streamflow for your date"]
         direction TB
-        T2[Server asks NWM:<br/>'streamflow on 2022-04-27 for<br/>every river segment in this HUC8']
-        T2 --> Cloud2[(National Water Model<br/>retrospective archive)]
-        Cloud2 --> Files2[/Saves locally:<br/>NWM_20220427_06010105.csv<br/>one discharge value per river segment/]
+        T2["Server asks NWM: streamflow on this date for every river segment in this HUC8"]
+        Cloud2[("National Water Model - retrospective archive 1979 to today")]
+        Files2["Saves locally: one discharge value per river segment as a CSV"]
+        T2 --> Cloud2 --> Files2
     end
 
-    subgraph S3[Step 3 — Compute the flood map]
+    subgraph S3["Step 3 — Compute the flood map"]
         direction TB
-        T3[For each river segment:<br/>1 look up its discharge<br/>2 look up the matching stage<br/>3 mark every pixel where<br/>HAND height ≤ stage as FLOODED]
-        T3 --> Files3[/Output: a GeoTIFF where<br/>each pixel = flooded or dry/]
+        T3a["For each river segment: look up its discharge"]
+        T3b["Look up the matching stage from the hydrotable"]
+        T3c["Mark every pixel where HAND height is less than or equal to stage as FLOODED"]
+        Files3["Output: a GeoTIFF where each pixel = flooded or dry"]
+        T3a --> T3b --> T3c --> Files3
     end
 
-    Display[Server sends a PNG preview<br/>to the browser]:::out
-    Map([Flooded area appears<br/>in blue on the Leaflet map]):::user
+    Display["Server sends a PNG preview to the browser"]:::out
+    Map([Flooded area appears in blue on the Leaflet map]):::user
 
     User --> S1
     S1 --> S2
@@ -233,32 +238,32 @@ If you're going to modify the code, here's the big picture:
 
 ```mermaid
 flowchart LR
-    subgraph Browser
-        UI[Map page<br/>HTML + JavaScript<br/>uses Leaflet for the map]
+    subgraph Browser["Browser"]
+        UI["Map page - HTML, JavaScript, Leaflet"]
     end
 
-    subgraph Server[Server side — Tethys app]
-        URLs[URL router<br/>matches /api/... to functions]
-        Ctrls[controllers.py<br/>turns HTTP requests<br/>into Python calls]
-        Logic[fim_logic.py<br/>all the heavy lifting<br/>file I/O, FIMserv calls,<br/>GeoTIFF → PNG, etc.]
+    subgraph Server["Server side — Tethys app"]
+        URLs["URL router - matches /api/... to functions"]
+        Ctrls["controllers.py - turns HTTP requests into Python calls"]
+        Logic["fim_logic.py - all the heavy lifting (file I/O, FIMserv calls, GeoTIFF to PNG, etc.)"]
     end
 
-    subgraph FIMservLib[FIMserv Python package]
-        DD[DownloadHUC8<br/>Step 1]
-        NWM[getNWMretrospectivedata<br/>Step 2]
-        HFIM[runOWPHANDFIM<br/>Step 3]
+    subgraph FIMservLib["FIMserv Python package"]
+        DD["DownloadHUC8 (Step 1)"]
+        NWM["getNWMretrospectivedata (Step 2)"]
+        HFIM["runOWPHANDFIM (Step 3)"]
     end
 
-    subgraph DataSources[Data sources on the internet]
-        S3[(CIROH bucket<br/>HAND data)]
-        Zarr[(NWM retrospective<br/>via teehr)]
+    subgraph DataSources["Data sources on the internet"]
+        S3[("CIROH bucket - HAND data")]
+        Zarr[("NWM retrospective via teehr")]
     end
 
-    subgraph Disk[Files on disk]
-        WS[/Tethys app workspace<br/>output/, data/inputs//]
+    subgraph Disk["Files on disk"]
+        WS["Tethys app workspace - output/ and data/inputs/"]
     end
 
-    UI <-->|fetch JSON / PNG| URLs
+    UI <-->|"fetch JSON / PNG"| URLs
     URLs --> Ctrls
     Ctrls --> Logic
     Logic --> DD
@@ -269,7 +274,7 @@ flowchart LR
     DD --> WS
     NWM --> WS
     HFIM --> WS
-    Logic -->|reads results| WS
+    Logic -->|"reads results"| WS
 ```
 
 In short: **JavaScript talks to Python via HTTP, Python calls FIMserv, FIMserv pulls cloud
