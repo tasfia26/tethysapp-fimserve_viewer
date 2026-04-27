@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tethysapp-fimserve_viewer"
+description = "HUC8 flood inundation viewer powered by FIMserv."
+
+keywords = ["Hydrology", "Hydroinformatics", "Web Service", "Python", "Open Source", "FIMserv", "Flood"]
+
+classifiers = [
+     "Environment :: Web Environment",
+     "Framework :: Django",
+     "Intended Audience :: Developers",
+     "Operating System :: OS Independent",
+     "Programming Language :: Python",
+     "Programming Language :: Python :: 3",
+     "Programming Language :: Python :: 3.10",
+     "Topic :: Internet :: WWW/HTTP",
+     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+dynamic = ["version"]
+
+# NOTE: We deliberately leave `dependencies` empty. Runtime dependencies
+# (the scientific stack, FIMserv's transitive deps, teehr, and FIMserv
+# itself) are managed by `install.yml` so they can be split between conda
+# and pip and so FIMserv can be pip-installed with --no-deps via
+# post_install.py. Listing them here as well would force pip to resolve
+# FIMserv's full dependency graph during `pip install -e .`, which causes
+# `error: resolution-too-deep`.
+dependencies = []
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+
+[tool.setuptools.package-data]
+"tethysapp.fimserve_viewer" = [
+    "templates/**/*",
+    "public/**/*",
+    "resources/**/*",
+    "workspaces/**/*"
+]

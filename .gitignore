@@ -1,0 +1,30 @@
+# Python build and cache artifacts
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+
+# FIMserv output trees
+# (the real data lives in the Tethys app workspace, outside the repo,
+#  but these rules protect you if a developer symlinks outputs into the repo)
+output/
+data/inputs/
+flood_*/
+*.tif
+*.parquet
+*.gpkg
+
+# FIMserv's runtime checkout of NOAA-OWP/inundation-mapping
+# (cloned automatically by the post_install.py / runfim.py code path).
+# It's a separate ~hundreds-of-MB git repo and must not be committed.
+code/
+
+# Tethys workspaces bind-mounted into the repo (defensive)
+workspaces/
+
+# IDE / editor metadata
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,596 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#map {
+    width: 100%;
+    height: 100vh;
+    z-index: 1;
+}
+
+.sidebar {
+    position: fixed;
+    top: 0;
+    right: -400px;
+    width: 400px;
+    height: 100vh;
+    background: white;
+    box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+    transition: right 0.3s ease;
+    z-index: 1000;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.sidebar.open {
+    right: 0;
+}
+
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.sidebar-header h2 {
+    color: #2c3e50;
+    font-size: 24px;
+}
+
+.close-btn {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.close-btn:hover {
+    background: #c0392b;
+}
+
+.info-section {
+    margin-bottom: 25px;
+}
+
+.info-section h3 {
+    color: #34495e;
+    font-size: 16px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #3498db;
+}
+
+.info-label {
+    font-weight: 600;
+    color: #555;
+}
+
+.info-value {
+    color: #2c3e50;
+    text-align: right;
+    max-width: 60%;
+    word-wrap: break-word;
+}
+
+.sidebar-attribution {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e0e0;
+    text-align: center;
+}
+
+.sidebar-attribution-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #7f8c8d;
+    margin-bottom: 4px;
+    line-height: 1.35;
+}
+
+.sidebar-attribution-sub {
+    font-size: 11px;
+    color: #95a5a6;
+    margin-bottom: 14px;
+    line-height: 1.4;
+}
+
+/*
+ * Partner marks use background-image on fixed-ratio tiles (not <img>),
+ * so huge source files never blow up layout — BYU and CIROH always share one grid row.
+ */
+.sidebar-attribution-logos.partners-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 150px;
+    margin: 0 auto;
+}
+
+.partners-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+}
+
+.partners-cell {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    min-height: 0;
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+}
+
+.partners-wide {
+    width: 100%;
+    height: 42px;
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+}
+
+.huc8-code {
+    font-size: 28px;
+    font-weight: bold;
+    color: #2980b9;
+    text-align: center;
+    padding: 15px;
+    background: #ecf0f1;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #7f8c8d;
+}
+
+.loading-spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.no-selection {
+    text-align: center;
+    padding: 60px 20px;
+    color: #95a5a6;
+}
+
+.no-selection svg {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 20px;
+    opacity: 0.3;
+}
+
+/* Custom popup styles */
+.leaflet-popup-content-wrapper {
+    border-radius: 8px;
+}
+
+.leaflet-popup-content {
+    margin: 15px;
+}
+
+.popup-title {
+    font-weight: bold;
+    font-size: 16px;
+    color: #2980b9;
+    margin-bottom: 8px;
+}
+
+.popup-info {
+    font-size: 14px;
+    color: #555;
+    margin: 4px 0;
+}
+
+.popup-click {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #7f8c8d;
+    font-style: italic;
+}
+
+/*
+ * Smooth interpolation when Leaflet scales the preview PNG (so flood edges look softer).
+ * Pane class: createPane('floodOverlayPane') → leaflet-floodOverlayPane-pane.
+ */
+.leaflet-pane.leaflet-floodOverlayPane-pane img,
+img.flood-raster-crisp.leaflet-image-layer {
+    image-rendering: auto;
+    -ms-interpolation-mode: bicubic;
+    opacity: 1 !important;
+    transform: translateZ(0);
+}
+
+.flood-streamflow-marker {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Labels must stack above the flood raster (pane z-index set in JS). */
+.leaflet-floodLabelsPane-pane {
+    overflow: visible !important;
+    pointer-events: none !important;
+}
+
+.flood-streamflow-marker-inner {
+    position: relative;
+    left: 0;
+    top: 0;
+    display: inline-block;
+    box-sizing: border-box;
+    white-space: nowrap;
+    padding: 7px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: #0d1b2a;
+    background: #ffffff;
+    background-clip: padding-box;
+    border: 2px solid #0d47a1;
+    border-radius: 8px;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.9) inset,
+        0 2px 10px rgba(0, 0, 0, 0.35),
+        0 1px 3px rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+}
+
+.leaflet-floodLabelsPane-pane .leaflet-marker-icon {
+    margin-left: 0 !important;
+    margin-top: 0 !important;
+    overflow: visible !important;
+}
+
+#flood-legend {
+    pointer-events: auto;
+}
+
+.flood-legend-toggle-wrap {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e8eaed;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    pointer-events: auto;
+}
+
+.flood-legend-toggle-wrap .flood-toggle-label {
+    font-size: 12px;
+    color: #444;
+    line-height: 1.3;
+    flex: 1;
+    min-width: 0;
+}
+
+.flood-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.flood-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.flood-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: #cfd8dc;
+    border-radius: 26px;
+    transition: background 0.2s;
+}
+
+.flood-toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s;
+}
+
+.flood-toggle-switch input:checked + .flood-toggle-slider {
+    background: #2980b9;
+}
+
+.flood-toggle-switch input:checked + .flood-toggle-slider::before {
+    transform: translateX(18px);
+}
+
+.flood-toggle-switch input:focus-visible + .flood-toggle-slider {
+    outline: 2px solid #3498db;
+    outline-offset: 2px;
+}
+
+/* Full-screen progress while NWM flood map is generating */
+.flood-generate-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.flood-generate-overlay.flood-generate-overlay--visible {
+    display: flex;
+}
+
+.flood-generate-modal {
+    position: relative;
+    background: #fff;
+    padding: 28px 32px 32px;
+    border-radius: 14px;
+    max-width: 440px;
+    width: 92%;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
+    text-align: center;
+}
+
+.flood-generate-modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 6px;
+}
+
+.flood-generate-modal-sub {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 18px;
+}
+
+.flood-generate-modal-msg {
+    font-size: 15px;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.5;
+    margin-top: 16px;
+    min-height: 2.8em;
+}
+
+.flood-generate-spinner {
+    width: 44px;
+    height: 44px;
+    margin: 8px auto 0;
+}
+
+.flood-generate-cancel-text {
+    margin-top: 18px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #c0392b;
+    background: #fff;
+    border: 2px solid rgba(192, 57, 43, 0.45);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.flood-generate-cancel-text:hover {
+    background: #fef2f2;
+    border-color: #c0392b;
+    color: #a93226;
+}
+
+/* Celebration-style success after flood map generation */
+.flood-success-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2600;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(4px);
+}
+
+.flood-success-overlay.flood-success-overlay--visible {
+    display: flex;
+    animation: floodSuccessFadeIn 0.35s ease-out;
+}
+
+@keyframes floodSuccessFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes floodSuccessPop {
+    0% { opacity: 0; transform: scale(0.92) translateY(12px); }
+    70% { opacity: 1; transform: scale(1.02) translateY(0); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.flood-success-card {
+    position: relative;
+    max-width: 420px;
+    width: 100%;
+    padding: 32px 28px 28px;
+    border-radius: 20px;
+    text-align: center;
+    background: linear-gradient(145deg, #ffffff 0%, #f0f9ff 45%, #e0f2fe 100%);
+    border: 1px solid rgba(14, 165, 233, 0.35);
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.8) inset,
+        0 24px 56px rgba(2, 132, 199, 0.18),
+        0 8px 24px rgba(15, 23, 42, 0.12);
+    animation: floodSuccessPop 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+
+.flood-success-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    width: 40px;
+    height: 40px;
+    border: 2px solid rgba(15, 23, 42, 0.18);
+    border-radius: 50%;
+    background: #fff;
+    color: #1e293b;
+    font-size: 26px;
+    font-weight: 300;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+    transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.flood-success-close:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+    border-color: rgba(14, 165, 233, 0.45);
+}
+
+.flood-success-close:active {
+    transform: scale(0.94);
+}
+
+.flood-success-icon {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: conic-gradient(from 200deg, #0ea5e9, #38bdf8, #7dd3fc, #0ea5e9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    box-shadow: 0 8px 24px rgba(14, 165, 233, 0.35);
+}
+
+.flood-success-icon-inner {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+}
+
+.flood-success-heading {
+    font-size: 22px;
+    font-weight: 800;
+    color: #0c4a6e;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+    line-height: 1.25;
+}
+
+.flood-success-tagline {
+    font-size: 14px;
+    color: #0369a1;
+    font-weight: 600;
+    margin-bottom: 14px;
+}
+
+.flood-success-detail {
+    font-size: 13px;
+    color: #475569;
+    line-height: 1.55;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.75);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.flood-success-detail strong {
+    color: #1e293b;
+}
+
+.flood-success-ok {
+    width: 100%;
+    max-width: 220px;
+    padding: 12px 20px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 50%, #38bdf8 100%);
+    box-shadow: 0 4px 14px rgba(2, 132, 199, 0.45);
+    transition: transform 0.15s, box-shadow 0.2s;
+}
+
+.flood-success-ok:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
+}
+
+.flood-success-ok:active {
+    transform: translateY(0);
+}

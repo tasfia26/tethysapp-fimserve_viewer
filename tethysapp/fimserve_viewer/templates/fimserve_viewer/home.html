@@ -1,0 +1,108 @@
+{% extends tethys_app.package|add:"/base.html" %}
+{% load static tethys %}
+
+{% block title %}HUC8 Watershed Explorer{% endblock %}
+
+{% block app_navigation_items %}
+  <li class="nav-item title">App Navigation</li>
+  <li class="nav-item active"><a class="nav-link" href="">Home</a></li>
+{% endblock %}
+
+{% block content_dependent_styles %}
+  {{ block.super }}
+  {# base.html already loads our public/css/main.css — only Leaflet CSS here. #}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    /* Hide Tethys's default blue "app-actions" strip at the bottom of the
+       app content area. We don't render any action buttons there, so the
+       empty bar just looks like a stray blue stripe. */
+    #app-content-wrapper #app-content #app-actions { display: none !important; }
+  </style>
+{% endblock %}
+
+{% block app_content %}
+  {# ------------------------------------------------------------------- #}
+  {# Body markup ported from index.html (Flask). The <html>/<head>/<body> #}
+  {# tags are NOT included — base.html provides them.                    #}
+  {# ------------------------------------------------------------------- #}
+  <div id="flood-generate-overlay" class="flood-generate-overlay" aria-hidden="true" role="dialog" aria-labelledby="flood-generate-title">
+      <div class="flood-generate-modal">
+          <div id="flood-generate-title" class="flood-generate-modal-title">Generating flood map</div>
+          <div class="flood-generate-modal-sub">Please wait — this can take several minutes.</div>
+          <div class="loading-spinner flood-generate-spinner" aria-hidden="true"></div>
+          <p id="flood-generate-modal-msg" class="flood-generate-modal-msg"></p>
+          <button type="button" class="flood-generate-cancel-text" id="flood-generate-cancel-text">Cancel generation</button>
+      </div>
+  </div>
+  <div id="flood-success-overlay" class="flood-success-overlay" aria-hidden="true" role="dialog" aria-labelledby="flood-success-heading" aria-modal="true">
+      <div class="flood-success-card" role="document">
+          <button type="button" class="flood-success-close" id="flood-success-close" title="Dismiss" aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <path d="M4 4l10 10M14 4L4 14" />
+              </svg>
+          </button>
+          <div class="flood-success-icon" aria-hidden="true">
+              <div class="flood-success-icon-inner">🌊</div>
+          </div>
+          <h2 id="flood-success-heading" class="flood-success-heading">Your flood map just made a splash!</h2>
+          <p class="flood-success-tagline">NWM streamflow met HAND — the inundation raster is ready.</p>
+          <div id="flood-success-detail" class="flood-success-detail"></div>
+          <button type="button" class="flood-success-ok" id="flood-success-ok">Got it</button>
+      </div>
+  </div>
+  <div id="map"></div>
+  <div id="flood-legend" style="display: none; position: absolute; bottom: 30px; left: 10px; z-index: 1000; background: white; padding: 10px 14px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); font-size: 13px;">
+      <div style="font-weight: 600; margin-bottom: 6px; color: #333;">Flood extent</div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 20px; height: 16px; background: #1E88E5; border-radius: 2px;"></span>
+          <span style="color: #555;">Flooded areas</span>
+      </div>
+      <div id="flood-legend-discharge-blurb" style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.35; max-width: 240px;">
+          Discharge in m³/s (≥0.5). Nearby labels within 0.5 m³/s of each other show the higher value only.
+      </div>
+      <div class="flood-legend-toggle-wrap">
+          <span class="flood-toggle-label">Show discharge numbers on map</span>
+          <label class="flood-toggle-switch" title="Toggle discharge labels">
+              <input type="checkbox" id="flood-labels-toggle" checked />
+              <span class="flood-toggle-slider"></span>
+          </label>
+      </div>
+      <div class="flood-legend-toggle-wrap">
+          <span class="flood-toggle-label">Show discharge in ft³/s (cfs)</span>
+          <label class="flood-toggle-switch" title="Convert map labels from m³/s to cubic feet per second">
+              <input type="checkbox" id="flood-units-cfs-toggle" />
+              <span class="flood-toggle-slider"></span>
+          </label>
+      </div>
+  </div>
+  <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+          <h2>HUC8 Details</h2>
+          <button class="close-btn" onclick="closeSidebar()">×</button>
+      </div>
+      <div id="sidebar-content">
+          <div class="no-selection">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              <p>Click on a HUC8 watershed to view details</p>
+          </div>
+      </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  {# Inject static URLs BEFORE block.super (which loads main.js), so the     #}
+  {# variables are defined in time. main.js reads window.APP_STATIC.byuLogo  #}
+  {# instead of hardcoded '/images/byu_logo.png' paths from the Flask app.   #}
+  <script>
+    window.APP_STATIC = {
+      byuLogo:         "{% static 'fimserve_viewer/images/byu_logo.png' %}",
+      cirohLogo:       "{% static 'fimserve_viewer/images/ciroh.jpeg' %}",
+      tgfLogo:         "{% static 'fimserve_viewer/images/TGF-Logo.png' %}",
+      huc8GeoJsonUrl:  "./api/all-huc8-geojson/"
+    };
+  </script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  {{ block.super }}
+{% endblock %}

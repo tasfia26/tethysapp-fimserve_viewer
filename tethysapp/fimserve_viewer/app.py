@@ -1,0 +1,16 @@
+from tethys_sdk.base import TethysAppBase
+
+
+class App(TethysAppBase):
+    """Tethys app class for the FIMserve Viewer."""
+
+    name = 'FIMserve Viewer'
+    description = 'HUC8 flood inundation viewer powered by FIMserv.'
+    package = 'fimserve_viewer'  # WARNING: Do not change this value
+    index = 'home'
+    icon = f'{package}/images/icon.gif'
+    root_url = 'fimserve-viewer'
+    color = '#1e88e5'
+    tags = '"Hydrology","Hydroinformatics","Flood","FIMserv"'
+    enable_feedback = False
+    feedback_emails = []
