@@ -1,10 +1,10 @@
 # FIMserve Viewer
 
-**A web app that draws flood maps for any US watershed, for any past date.**
+**A web app that draws flood maps for any US watershed, for any date between Feb 1979 and Jan 2023.**
 
-Open the app in a browser, click on a watershed, pick a date — and a few minutes later you'll
-see exactly which areas would have been under water. You can also download the result as a
-GIS file to use in QGIS / ArcGIS.
+Open the app in a browser, click on a watershed, pick a date in that range — and a few
+minutes later you'll see exactly which areas would have been under water. You can also
+download the result as a GIS file to use in QGIS / ArcGIS.
 
 This app is a web wrapper around [FIMserv](https://github.com/sdmlua/FIMserv), which itself
 wraps [NOAA's flood inundation model (HAND-FIM)](https://github.com/NOAA-OWP/inundation-mapping).
@@ -42,7 +42,7 @@ You can also:
 | Term | Plain English |
 |------|---------------|
 | **HUC8** | A small US watershed (~county-sized). The app shows ~2,500 of them. Each has an 8-digit ID like `06010105`. |
-| **NWM** (National Water Model) | NOAA's continuous river-flow forecast/historical record covering every stream in the US. We use the **retrospective** version (1979 – present). |
+| **NWM** (National Water Model) | NOAA's continuous river-flow forecast/historical record covering every stream in the US. We use the **NWM v3.0 retrospective** (Feb 1979 – Jan 2023). |
 | **Discharge / streamflow** | How much water is flowing past a point per second. Measured in m³/s or ft³/s (cfs). |
 | **Stage** | How high the water level is in the channel, in metres above the channel bottom. |
 | **HAND** (Height Above Nearest Drainage) | A terrain layer that says, for every pixel: "you are X metres above the nearest river." Used to decide if a pixel floods at a given stage. |
@@ -55,11 +55,13 @@ You can also:
 
 ---
 
-## Quickstart (for people who've never used Tethys before)
+## Quickstart for macOS / Linux
+
+> Using Windows? Skip down to **[Quickstart for Windows](#quickstart-for-windows)**.
 
 ### What you'll need
 
-- A Mac or Linux machine. (Windows works but the commands are a bit different.)
+- A Mac or Linux machine.
 - About 5 GB of free disk space.
 - A reasonably fast internet connection (the model data is big).
 - 30–60 minutes of patience the first time you set this up.
@@ -163,6 +165,157 @@ You should see the map. Pan around, click a HUC8 polygon — you're done.
 
 ---
 
+## Quickstart for Windows
+
+The flow is exactly the same as for macOS / Linux — install conda, create a Tethys
+environment, install the app, start the server. Only the terminal commands and a couple
+of OS conventions differ.
+
+### What you'll need
+
+- Windows 10 or 11.
+- About 5 GB of free disk space.
+- A reasonably fast internet connection.
+- 30–60 minutes for first-time setup.
+- Recommended: install **Git for Windows** so the `git clone` command works.
+  Get it at <https://git-scm.com/download/win>. After installing, you'll have a
+  "Git Bash" terminal — but you can also use Anaconda Prompt or PowerShell.
+
+### Step 1 — Install Miniforge (a slim conda)
+
+Download the Windows installer:
+
+> <https://github.com/conda-forge/miniforge#install>
+
+Pick **Miniforge3-Windows-x86_64.exe**. During install:
+
+- ✅ "Install for: Just Me" (default).
+- ✅ Leave the default install location.
+- ❌ Don't tick "Add Miniforge3 to PATH" (the recommended way is to use the
+  **Miniforge Prompt** from your Start menu instead).
+
+When done, open **Miniforge Prompt** from the Start menu. Every command in the
+following steps should be pasted into that window. (The black-and-white prompt should
+start with `(base)`.)
+
+### Step 2 — Create a Tethys environment and install Tethys Platform
+
+Same command as on Mac:
+
+```bat
+mamba create -n tethys -c conda-forge "tethys-platform>=4.0" "postgresql"
+```
+
+Then activate it:
+
+```bat
+conda activate tethys
+```
+
+Your prompt should change to start with `(tethys)`.
+
+### Step 3 — One-time database setup
+
+```bat
+tethys gen portal_config
+tethys db init
+tethys db start
+tethys db configure
+```
+
+This will ask you to create an `admin` user — pick any username + password and remember
+them. You'll need the password whenever you log into the Tethys admin panel.
+
+> **Tip:** if `tethys db start` fails saying port 5435 is in use, another Tethys instance
+> may already be running in the background. Restart your computer and try again.
+
+### Step 4 — Get this app
+
+Using **Git Bash** (recommended) OR Miniforge Prompt with git installed:
+
+```bat
+git clone https://github.com/tasfia26/tethysapp-fimserve_viewer.git
+cd tethysapp-fimserve_viewer
+```
+
+If you don't want to install git, you can instead **Download ZIP** from the GitHub
+repo's green "Code" button, unzip it, and `cd` into the resulting folder.
+
+### Step 5 — Install the app's dependencies
+
+Make sure your Miniforge Prompt is in the `tethysapp-fimserve_viewer` folder
+(`cd` to it if needed), then:
+
+```bat
+tethys install -d
+```
+
+This is the slow step — 5–15 minutes depending on your internet. Same as on Mac.
+
+### Step 6 — Start the web server
+
+```bat
+tethys start -p 127.0.0.1:8001
+```
+
+When you see `Starting ASGI/Daphne version ... at http://127.0.0.1:8001/` it's running.
+**Leave that window open** — that's the server. To stop it, press **Ctrl+C** in that
+window.
+
+### Step 7 — Open the app
+
+In your browser go to:
+
+> **<http://127.0.0.1:8001/apps/fimserve-viewer/>**
+
+Then follow Step 8 from the macOS section above to generate your first flood map.
+
+### Windows-specific notes
+
+- **Setting environment variables:** the macOS/Linux instructions sometimes say
+  `export FIMSERV_ROOT=/some/path`. On Windows, the equivalent is OS-specific:
+
+  - In **Miniforge Prompt / cmd.exe**:
+    ```bat
+    set FIMSERV_ROOT=C:\Users\YourName\fimserve_workspace
+    tethys start -p 127.0.0.1:8001
+    ```
+  - In **PowerShell**:
+    ```powershell
+    $env:FIMSERV_ROOT = "C:\Users\YourName\fimserve_workspace"
+    tethys start -p 127.0.0.1:8001
+    ```
+
+  Note: a `set` / `$env:` value only applies to the current terminal window. If you
+  close the window, you'll need to set it again.
+
+- **Path separators:** Windows uses backslashes (`\`) in file paths. The Python code
+  in this app uses `pathlib`, which handles this automatically — but if you're typing
+  paths into the terminal, use backslashes (or wrap the path in double quotes).
+
+- **Long path errors:** Windows has a default 260-character path limit that can bite
+  you when FIMserv writes deeply nested files. If you hit a "filename too long" error,
+  enable Long Path Support:
+
+  1. Press Win+R, type `gpedit.msc`, press Enter.
+  2. Go to *Computer Configuration → Administrative Templates → System → Filesystem*.
+  3. Enable **Enable Win32 long paths**.
+  4. Reboot.
+
+  Alternatively, set `FIMSERV_ROOT` to a short path like `C:\fim` so total path length
+  stays under 260 chars.
+
+- **`conda` vs `mamba`:** if `mamba create ...` errors out saying "command not found",
+  use `conda create ...` instead. Miniforge usually ships both, but some older
+  installers only have conda.
+
+- **Antivirus:** some Windows antivirus tools (especially corporate-managed ones) can
+  slow `tethys install -d` to a crawl by scanning every file conda extracts. If your
+  install seems stuck for >30 minutes with no apparent progress, try whitelisting the
+  Miniforge install directory.
+
+---
+
 ## How a flood map is actually computed (visual)
 
 Here's what happens behind the scenes when you click **Generate Flood Map**. The diagram
@@ -183,7 +336,7 @@ flowchart TD
     subgraph S2["Step 2 — Get streamflow for your date"]
         direction TB
         T2["Server asks NWM: streamflow on this date for every river segment in this HUC8"]
-        Cloud2[("National Water Model - retrospective archive 1979 to today")]
+        Cloud2[("National Water Model - retrospective archive Feb 1979 to Jan 2023")]
         Files2["Saves locally: one discharge value per river segment as a CSV"]
         T2 --> Cloud2 --> Files2
     end
