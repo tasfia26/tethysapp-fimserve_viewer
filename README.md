@@ -316,6 +316,123 @@ Then follow Step 8 from the macOS section above to generate your first flood map
 
 ---
 
+## Git LFS (for contributors)
+
+This repo ships a 57 MB watershed-boundaries file
+(`tethysapp/fimserve_viewer/resources/all_huc8.geojson`) that the map needs in order
+to draw every HUC8 polygon in the United States. GitHub shows a yellow warning for any
+file over 50 MB, so we use **Git Large File Storage (Git LFS)** to keep the main repo
+small and avoid that warning when the file is updated in the future.
+
+> **You don't need Git LFS just to use the app.** A normal `git clone` works fine — the
+> file already on `main` will download as a regular file. You only need the steps below
+> if you're a **contributor** who plans to *modify or replace* `all_huc8.geojson` (or
+> add another large file to `tethysapp/fimserve_viewer/resources/`).
+
+### What is Git LFS, in one sentence?
+
+Git LFS swaps big files in your repo for tiny text "pointer" files, and stores the real
+contents on a separate server. Git stays fast, GitHub stays happy, and it's transparent
+once it's set up.
+
+### One-time setup (per machine)
+
+**macOS** (Homebrew):
+
+```bash
+brew install git-lfs
+git lfs install
+```
+
+**Windows:**
+
+Download and run the installer from <https://git-lfs.com/>, then in your Git Bash /
+Miniforge Prompt:
+
+```bash
+git lfs install
+```
+
+**Linux** (Debian/Ubuntu):
+
+```bash
+sudo apt-get install git-lfs
+git lfs install
+```
+
+`git lfs install` only needs to run **once per machine** — it adds a small entry to your
+global git config that teaches git how to handle LFS files.
+
+### What's already configured for you
+
+The repo's `.gitattributes` file is already set up to send these patterns to LFS:
+
+```
+tethysapp/fimserve_viewer/resources/all_huc8.geojson
+tethysapp/fimserve_viewer/resources/*.geojson
+tethysapp/fimserve_viewer/resources/*.gpkg
+tethysapp/fimserve_viewer/resources/*.tif
+tethysapp/fimserve_viewer/resources/*.tiff
+```
+
+So if you drop a new `.geojson`, `.gpkg`, or `.tif` into the `resources/` folder, it's
+automatically tracked by LFS — no extra commands needed on your end.
+
+### Workflow when updating a large file
+
+```bash
+# 1. After installing git-lfs once (see above), drop your updated file in:
+#    tethysapp/fimserve_viewer/resources/all_huc8.geojson
+
+# 2. Verify .gitattributes is going to send it through LFS:
+git check-attr filter -- tethysapp/fimserve_viewer/resources/all_huc8.geojson
+# Expected output:
+#   tethysapp/fimserve_viewer/resources/all_huc8.geojson: filter: lfs
+
+# 3. Commit normally:
+git add tethysapp/fimserve_viewer/resources/all_huc8.geojson
+git commit -m "Update HUC8 boundaries"
+
+# 4. Confirm LFS has the file (it should be listed):
+git lfs ls-files
+
+# 5. Push:
+git push
+```
+
+That's it. `git push` will upload the actual file contents to GitHub's LFS storage and
+push only a tiny pointer through normal git.
+
+### Tracking a brand-new big file (not already in .gitattributes)
+
+If you add a large file with an extension we don't already track:
+
+```bash
+git lfs track "path/to/your/big/file.bin"
+git add .gitattributes path/to/your/big/file.bin
+git commit -m "Add big file via LFS"
+git push
+```
+
+The `git lfs track` command appends an entry to `.gitattributes`. **Always commit
+`.gitattributes` together with the new big file** so other contributors get the rule.
+
+### Troubleshooting
+
+- **"error: File X is 57 MB; this exceeds GitHub's file size limit of 100.00 MB":**
+  the file was committed *before* you ran `git lfs install`, so it's a real blob, not
+  an LFS pointer. Reset that commit (`git reset HEAD~1`), make sure
+  `git check-attr filter -- <file>` says `filter: lfs`, then re-add and re-commit.
+
+- **`git lfs ls-files` shows nothing after a fresh clone:** that just means the existing
+  files on `main` were committed before LFS was enabled — they're regular blobs (which
+  is fine, the app still works). Future updates will go through LFS.
+
+- **A teammate cloned and the geojson is a 130-byte text file:** they don't have Git LFS
+  installed. Have them run `git lfs install` and then `git lfs pull`.
+
+---
+
 ## How a flood map is actually computed (visual)
 
 Here's what happens behind the scenes when you click **Generate Flood Map**. The diagram
@@ -446,6 +563,7 @@ tethysapp-fimserve_viewer/
 ├── post_install.py            ← installs FIMserv after the rest is in place
 ├── pyproject.toml             ← packaging metadata (mostly empty on purpose)
 ├── .gitignore                 ← what NOT to commit (model outputs, etc.)
+├── .gitattributes             ← which big files go through Git LFS
 │
 └── tethysapp/
     └── fimserve_viewer/
