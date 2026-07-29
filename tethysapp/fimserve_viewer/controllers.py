@@ -16,7 +16,6 @@ URL prefix: every URL below is automatically prefixed with
 import json
 import os
 import traceback
-from datetime import datetime
 from pathlib import Path
 
 from django.http import (
@@ -30,6 +29,35 @@ from tethys_sdk.routing import controller
 
 from . import fim_logic
 from .app import App
+from .results import (
+    custom_pattern,
+    labels_name_for_tif,
+    nwm_pattern,
+    results,
+    sanitize_discharge,
+)
+
+
+def find_custom_map_key(huc8, discharge_val):
+    """Key of the stored custom map for a discharge, or any custom map for the HUC8."""
+    key = results.find(huc8, custom_pattern(huc8, discharge_val))
+    if key is None:
+        key = results.find(huc8, f"CustomQ_*_{huc8}_inundation.tif")
+    return key
+
+
+def reclassified_response(key, download_name):
+    """Stream a stored tif reclassified to 0/1."""
+    with results.local(key) as map_file:
+        tmp_path = fim_logic.reclassify_temp_copy(map_file)
+    tmp_handle = open(tmp_path, "rb")
+    os.unlink(tmp_path)
+    return FileResponse(
+        tmp_handle,
+        content_type="image/tiff",
+        as_attachment=True,
+        filename=download_name,
+    )
 
 
 # =============================================================================
@@ -56,28 +84,41 @@ def home(request):
 # file to the browser so we don't need to duplicate the 57 MB GeoJSON into
 # `public/data/`.
 # =============================================================================
-@controller(url="api/all-huc8-geojson")
-@csrf_exempt
-def all_huc8_geojson(request):
-    """Serve the static all_huc8.geojson polygons file used by the Leaflet map."""
-    geojson_path = (
-        Path(__file__).resolve().parent / "resources" / "all_huc8.geojson"
-    )
-    if not geojson_path.is_file():
+def bundled_resource_response(filename, content_type):
+    """Serve a file from the app package's resources/ with long-lived caching."""
+    resource_path = Path(__file__).resolve().parent / "resources" / filename
+    if not resource_path.is_file():
         return JsonResponse(
             {
                 "status": "error",
-                "message": "all_huc8.geojson is missing from app resources/.",
+                "message": f"{filename} is missing from app resources/.",
             },
             status=500,
         )
-    response = FileResponse(
-        open(geojson_path, "rb"),
-        content_type="application/geo+json",
-    )
-    # Cache aggressively — file is static and ships with the package.
+    response = FileResponse(open(resource_path, "rb"), content_type=content_type)
     response["Cache-Control"] = "public, max-age=86400, immutable"
     return response
+
+
+@controller(url="api/all-huc8-geojson")
+@csrf_exempt
+def all_huc8_geojson(request):
+    """Serve the full-resolution HUC8 polygons GeoJSON."""
+    return bundled_resource_response("all_huc8.geojson", "application/geo+json")
+
+
+@controller(url="api/all-huc8-topojson")
+@csrf_exempt
+def all_huc8_topojson(request):
+    """Serve the simplified HUC8 topology used by the Leaflet map."""
+    return bundled_resource_response("all_huc8.topojson", "application/json")
+
+
+@controller(url="api/fim-coverage")
+@csrf_exempt
+def fim_coverage(request):
+    """Serve the set of HUC8s that have HAND-FIM data available."""
+    return bundled_resource_response("fim_coverage.json", "application/json")
 
 
 # =============================================================================
@@ -126,7 +167,7 @@ def generate_flood_map(request):
         print("Step 2: Getting NWM streamflow data...")
         fim_logic._run_flood_step2_nwm_streamflow(huc8, datetime_str)
         print("Step 3: Generating flood inundation map...")
-        fim_logic._run_flood_step3_hand_inundation(huc8)
+        fim_logic._run_flood_step3_hand_inundation(huc8, datetime_str)
 
         map_file, miss_msg = fim_logic._locate_generated_inundation_tif(
             huc8, datetime_str
@@ -136,14 +177,15 @@ def generate_flood_map(request):
                 {"status": "error", "message": miss_msg}, status=500
             )
 
+        key = results.store(map_file, huc8)
         return JsonResponse(
             {
                 "status": "success",
                 "message": "Flood inundation map generated successfully",
                 "huc8": huc8,
                 "datetime": datetime_str,
-                "file_path": str(map_file),
-                "file_name": map_file.name,
+                "file_path": key,
+                "file_name": Path(key).name,
             }
         )
     except Exception as exc:
@@ -206,7 +248,7 @@ def generate_flood_map_step(request, step):
             )
         # step == 3
         print("Step 3: Generating flood inundation map...")
-        fim_logic._run_flood_step3_hand_inundation(huc8)
+        fim_logic._run_flood_step3_hand_inundation(huc8, datetime_str)
         map_file, miss_msg = fim_logic._locate_generated_inundation_tif(
             huc8, datetime_str
         )
@@ -214,6 +256,7 @@ def generate_flood_map_step(request, step):
             return JsonResponse(
                 {"status": "error", "message": miss_msg}, status=500
             )
+        key = results.store(map_file, huc8)
         return JsonResponse(
             {
                 "status": "success",
@@ -221,8 +264,8 @@ def generate_flood_map_step(request, step):
                 "message": "Flood inundation map generated successfully",
                 "huc8": huc8,
                 "datetime": datetime_str,
-                "file_path": str(map_file),
-                "file_name": map_file.name,
+                "file_path": key,
+                "file_name": Path(key).name,
             }
         )
     except Exception as exc:
@@ -277,14 +320,15 @@ def generate_flood_map_custom(request):
 
     try:
         map_file = fim_logic.run_custom_discharge_flood_map(huc8, discharge_val)
+        key = results.store(map_file, huc8)
         return JsonResponse(
             {
                 "status": "success",
                 "message": "Custom discharge flood map generated successfully",
                 "huc8": huc8,
                 "discharge": discharge_val,
-                "file_path": str(map_file),
-                "file_name": map_file.name,
+                "file_path": key,
+                "file_name": Path(key).name,
             }
         )
     except FileNotFoundError as exc:
@@ -302,15 +346,8 @@ def generate_flood_map_custom(request):
 def flood_map_preview_nwm(request, huc8, date_str):
     """Return PNG preview + bounds for an NWM flood map (for Leaflet display)."""
     try:
-        if len(date_str) == 10:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            pattern = f"NWM_{date_obj.strftime('%Y%m%d')}*_{huc8}_inundation.tif"
-        else:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d-%H-%M-%S")
-            pattern = f"NWM_{date_obj.strftime('%Y%m%d%H%M%S')}_{huc8}_inundation.tif"
-
-        map_file = fim_logic._find_inundation_file(huc8, pattern)
-        if map_file is None:
+        key = results.find(huc8, nwm_pattern(huc8, date_str))
+        if key is None:
             return JsonResponse(
                 {
                     "status": "error",
@@ -319,7 +356,8 @@ def flood_map_preview_nwm(request, huc8, date_str):
                 status=404,
             )
 
-        out = fim_logic._tif_to_preview_png(map_file, huc8=huc8)
+        with results.local(key) as map_file:
+            out = fim_logic._tif_to_preview_png(map_file, huc8=huc8)
         return JsonResponse(
             {
                 "status": "success",
@@ -340,9 +378,15 @@ def flood_map_preview_nwm(request, huc8, date_str):
 @controller(url="api/flood-q-labels/nwm/{huc8}/{date_str}")
 @csrf_exempt
 def flood_q_labels_nwm(request, huc8, date_str):
-    """GeoJSON points with discharge_m3s for each NWM reach (map labels)."""
+    """GeoJSON points with discharge_m3s for each NWM reach (map labels).
+
+    Prefers the labels artifact stored beside the result at generation time
+    (readable from any replica); falls back to computing from local files.
+    """
     try:
-        geojson_str = fim_logic.build_flood_q_labels(huc8, date_str)
+        geojson_str = stored_nwm_labels(huc8, date_str)
+        if geojson_str is None:
+            geojson_str = fim_logic.build_flood_q_labels(huc8, date_str)
         if geojson_str is None:
             return HttpResponse(
                 json.dumps(fim_logic._empty_feature_collection()),
@@ -356,6 +400,14 @@ def flood_q_labels_nwm(request, huc8, date_str):
         )
 
 
+def stored_nwm_labels(huc8, date_str):
+    """Return the stored labels GeoJSON for a HUC8 + date, or None."""
+    tif_key = results.find(huc8, nwm_pattern(huc8, date_str))
+    if tif_key is None:
+        return None
+    return results.text(labels_name_for_tif(tif_key))
+
+
 # =============================================================================
 # /api/flood-map-preview/custom/{huc8}/{discharge_str}
 # =============================================================================
@@ -365,17 +417,8 @@ def flood_map_preview_custom(request, huc8, discharge_str):
     """Return PNG preview + bounds for a custom-discharge flood map."""
     try:
         discharge_val = float(discharge_str)
-        discharge_sanitized = (
-            str(discharge_val).replace(".", "_").replace("-", "m")
-        )
-        map_file = fim_logic._find_inundation_file(
-            huc8, f"CustomQ_{discharge_sanitized}_{huc8}_inundation.tif"
-        )
-        if map_file is None:
-            map_file = fim_logic._find_inundation_file(
-                huc8, f"CustomQ_*_{huc8}_inundation.tif"
-            )
-        if map_file is None:
+        key = find_custom_map_key(huc8, discharge_val)
+        if key is None:
             return JsonResponse(
                 {
                     "status": "error",
@@ -387,7 +430,8 @@ def flood_map_preview_custom(request, huc8, discharge_str):
                 status=404,
             )
 
-        out = fim_logic._tif_to_preview_png(map_file, huc8=huc8)
+        with results.local(key) as map_file:
+            out = fim_logic._tif_to_preview_png(map_file, huc8=huc8)
         return JsonResponse(
             {
                 "status": "success",
@@ -412,15 +456,8 @@ def get_flood_map(request, huc8, date_str):
     do_reclass = request.GET.get("reclass", "0") == "1"
 
     try:
-        if len(date_str) == 10:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            pattern = f"NWM_{date_obj.strftime('%Y%m%d')}*_{huc8}_inundation.tif"
-        else:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d-%H-%M-%S")
-            pattern = f"NWM_{date_obj.strftime('%Y%m%d%H%M%S')}_{huc8}_inundation.tif"
-
-        map_file = fim_logic._find_inundation_file(huc8, pattern)
-        if map_file is None:
+        key = results.find(huc8, nwm_pattern(huc8, date_str))
+        if key is None:
             return JsonResponse(
                 {
                     "status": "error",
@@ -430,34 +467,8 @@ def get_flood_map(request, huc8, date_str):
             )
 
         if do_reclass:
-            try:
-                tmp_path = fim_logic.reclassify_temp_copy(map_file)
-            except Exception as exc:
-                return JsonResponse(
-                    {
-                        "status": "error",
-                        "message": (
-                            f"Reclassification failed: {exc}. "
-                            "Ensure rasterio and numpy are installed."
-                        ),
-                    },
-                    status=500,
-                )
-            # NB: FileResponse opens the temp file in 'rb' mode and Django
-            # closes it after streaming. We delete after sending by hooking
-            # close — but in practice the OS reclaims it on process exit,
-            # and the file is small. Keep behaviour parallel to Flask.
-            response = FileResponse(
-                open(tmp_path, "rb"),
-                content_type="image/tiff",
-                as_attachment=True,
-                filename=f"{map_file.stem}_reclassified.tif",
-            )
-            return response
-
-        return FileResponse(
-            open(map_file, "rb"), content_type="image/tiff"
-        )
+            return reclassified_response(key, f"{Path(key).stem}_reclassified.tif")
+        return results.response(key)
     except Exception as exc:
         return JsonResponse(
             {"status": "error", "message": str(exc)}, status=500
@@ -481,17 +492,9 @@ def get_flood_map_custom(request, huc8, discharge_str):
         )
 
     try:
-        discharge_sanitized = (
-            str(discharge_val).replace(".", "_").replace("-", "m")
-        )
-        map_file = fim_logic._find_inundation_file(
-            huc8, f"CustomQ_{discharge_sanitized}_{huc8}_inundation.tif"
-        )
-        if map_file is None:
-            map_file = fim_logic._find_inundation_file(
-                huc8, f"CustomQ_*_{huc8}_inundation.tif"
-            )
-        if map_file is None:
+        discharge_sanitized = sanitize_discharge(discharge_val)
+        key = find_custom_map_key(huc8, discharge_val)
+        if key is None:
             return JsonResponse(
                 {
                     "status": "error",
@@ -504,29 +507,10 @@ def get_flood_map_custom(request, huc8, discharge_str):
             )
 
         if do_reclass:
-            try:
-                tmp_path = fim_logic.reclassify_temp_copy(map_file)
-            except Exception as exc:
-                return JsonResponse(
-                    {
-                        "status": "error",
-                        "message": f"Reclassification failed: {exc}",
-                    },
-                    status=500,
-                )
-            return FileResponse(
-                open(tmp_path, "rb"),
-                content_type="image/tiff",
-                as_attachment=True,
-                filename=f"{huc8}_customQ{discharge_sanitized}_reclassified.tif",
+            return reclassified_response(
+                key, f"{huc8}_customQ{discharge_sanitized}_reclassified.tif"
             )
-
-        return FileResponse(
-            open(map_file, "rb"),
-            content_type="image/tiff",
-            as_attachment=True,
-            filename=f"{huc8}_customQ{discharge_sanitized}.tif",
-        )
+        return results.response(key, download_name=f"{huc8}_customQ{discharge_sanitized}.tif")
     except Exception as exc:
         return JsonResponse(
             {"status": "error", "message": str(exc)}, status=500

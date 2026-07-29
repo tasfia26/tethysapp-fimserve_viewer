@@ -187,6 +187,12 @@ var FloodMercatorImageLayer = L.Layer.extend({
 
 // Store the GeoJSON layer
 let huc8Layer = null;
+let fimCoveredSet = null;
+
+function isHuc8Covered(properties) {
+    if (!fimCoveredSet) return true;
+    return fimCoveredSet.has(getHUC8(properties));
+}
 // Flood map overlay (TIF preview on map)
 let floodOverlayLayer = null;
 let floodQLabelLayer = null;
@@ -239,11 +245,19 @@ function formatNumber(num) {
 }
 
 // Function to display HUC8 details in sidebar
+const NWM_MIN_DATE = '1979-02-01';
+const NWM_MAX_DATE = '2023-01-31';
+
+function nwmDateRangeError(date) {
+    if (date >= NWM_MIN_DATE && date <= NWM_MAX_DATE) return '';
+    return `Date must be between ${NWM_MIN_DATE} and ${NWM_MAX_DATE} (NWM retrospective coverage).`;
+}
+
 function displayHUC8Details(properties) {
     const sidebar = document.getElementById('sidebar');
     const content = document.getElementById('sidebar-content');
     const huc8Code = getHUC8(properties);
-    const today = new Date().toISOString().split('T')[0];
+    const defaultDate = NWM_MAX_DATE;
 
     if (lastSidebarHuc8 != null && huc8Code !== lastSidebarHuc8) {
         floodUIMapRequestSeq++;
@@ -263,6 +277,34 @@ function displayHUC8Details(properties) {
     const byuLogoUrl = APP_STATIC.byuLogo || '';
     const cirohLogoUrl = APP_STATIC.cirohLogo || '';
     const tgfLogoUrl = APP_STATIC.tgfLogo || '';
+
+    const covered = isHuc8Covered(properties);
+    const generateSection = covered ? `
+            <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-top: 10px;">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #555;">Date:</label>
+                    <input type="date" id="flood-date-input" value="${defaultDate}" min="${NWM_MIN_DATE}" max="${NWM_MAX_DATE}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
+                    <p style="font-size: 11px; color: #7f8c8d; margin-top: 4px;">NWM retrospective data: Feb 1979 &ndash; Jan 2023.</p>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #555;">Time (HH:MM:SS):</label>
+                    <input type="time" id="flood-time-input" step="1" value="00:00:00" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
+                    <p style="font-size: 11px; color: #7f8c8d; margin-top: 4px;">Model hour for the map. Note: 12:00:00 AM = midnight (00:00).</p>
+                </div>
+                <button id="generate-flood-map-btn" onclick="generateFloodMap('${huc8Code}')" style="width: 100%; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                    Generate Flood Map
+                </button>
+                <button id="download-processed-btn" onclick="downloadProcessedFloodMap('${huc8Code}')" style="width: 100%; padding: 10px; background: #2980b9; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background 0.2s;">
+                    Download processed (reclassified)
+                </button>
+                <p style="font-size: 11px; color: #7f8c8d; margin-top: 6px;">Reclassifies: flooded &rarr; 1, no flood &rarr; 0.</p>
+                <button id="show-on-map-nwm-btn" onclick="showFloodMapOnMapNwm('${huc8Code}')" style="width: 100%; padding: 10px; background: #3498db; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background 0.2s;">Show on map</button>
+                <div id="flood-map-status" style="margin-top: 10px; font-size: 12px; color: #7f8c8d;"></div>
+            </div>` : `
+            <div style="padding: 15px; background: #fdf0ed; border: 1px solid #f5c6b8; border-radius: 8px; margin-top: 10px;">
+                <strong style="color: #c0392b;">No FIM coverage</strong>
+                <p style="font-size: 12px; color: #7f8c8d; margin-top: 6px;">HAND-FIM data is not available for this HUC8, so a flood map cannot be generated here. Coverage is limited to the CONUS watersheds in the OWP HAND-FIM dataset.</p>
+            </div>`;
 
     content.innerHTML = `
         <div class="huc8-code">${getHUC8(properties)}</div>
@@ -301,25 +343,7 @@ function displayHUC8Details(properties) {
         
         <div class="info-section">
             <h3>Generate Flood Map with NWM Data</h3>
-            <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-top: 10px;">
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #555;">Date:</label>
-                    <input type="date" id="flood-date-input" value="${today}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #555;">Time (HH:MM:SS):</label>
-                    <input type="time" id="flood-time-input" step="1" value="00:00:00" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
-                </div>
-                <button id="generate-flood-map-btn" onclick="generateFloodMap('${huc8Code}')" style="width: 100%; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
-                    Generate Flood Map
-                </button>
-                <button id="download-processed-btn" onclick="downloadProcessedFloodMap('${huc8Code}')" style="width: 100%; padding: 10px; background: #2980b9; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background 0.2s;">
-                    Download processed (reclassified)
-                </button>
-                <p style="font-size: 11px; color: #7f8c8d; margin-top: 6px;">Reclassifies: flooded → 1, no flood → 0.</p>
-                <button id="show-on-map-nwm-btn" onclick="showFloodMapOnMapNwm('${huc8Code}')" style="width: 100%; padding: 10px; background: #3498db; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background 0.2s;">Show on map</button>
-                <div id="flood-map-status" style="margin-top: 10px; font-size: 12px; color: #7f8c8d;"></div>
-            </div>
+            ${generateSection}
             <div class="sidebar-attribution" aria-label="Partner organizations">
                 <div class="sidebar-attribution-title">Authorization &amp; partners</div>
                 <p class="sidebar-attribution-sub">This application is developed under the authorization of and in partnership with the following organizations.</p>
@@ -333,6 +357,7 @@ function displayHUC8Details(properties) {
             </div>
         </div>
     `;
+    if (covered) reattachActiveFloodJob(huc8Code);
 }
 
 // Function to close sidebar
@@ -368,6 +393,15 @@ function createPopupContent(properties) {
 
 // Function to style HUC8 polygons
 function styleHUC8(feature) {
+    if (!isHuc8Covered(feature.properties)) {
+        return {
+            fillColor: '#95a5a6',
+            fillOpacity: 0.2,
+            color: '#7f8c8d',
+            weight: 1,
+            opacity: 0.4
+        };
+    }
     return {
         fillColor: '#3498db',
         fillOpacity: 0.4,
@@ -467,25 +501,39 @@ sidebarContent.innerHTML = `
 // (`/apps/fimserve-viewer/`) into `/apps/fimserve-viewer/api/...`.
 // No more API_BASE_URL / port-probing logic from the Flask deployment.
 const APP_STATIC = (typeof window !== 'undefined' && window.APP_STATIC) ? window.APP_STATIC : {};
-const HUC8_GEOJSON_URL = APP_STATIC.huc8GeoJsonUrl || './api/all-huc8-geojson/';
+const HUC8_TOPOJSON_URL = APP_STATIC.huc8TopoJsonUrl || './api/all-huc8-topojson/';
+const huc8Renderer = L.canvas({ padding: 0.5 });
 
-// Load and display HUC8 data
+function decodeHuc8Topology(topology) {
+    return topojson.feature(topology, Object.values(topology.objects)[0]);
+}
+
 console.log('Starting to load HUC8 data...');
-fetch(HUC8_GEOJSON_URL)
+const FIM_COVERAGE_URL = APP_STATIC.fimCoverageUrl || './api/fim-coverage/';
+fetch(FIM_COVERAGE_URL)
+    .then(response => (response.ok ? response.json() : null))
+    .then(coverage => {
+        if (coverage && Array.isArray(coverage.hucs)) {
+            fimCoveredSet = new Set(coverage.hucs.map(String));
+            console.log(`FIM coverage loaded: ${fimCoveredSet.size} HUC8s`);
+        }
+    })
+    .catch(() => console.warn('FIM coverage unavailable; treating all HUC8s as generatable'))
+    .then(() => fetch(HUC8_TOPOJSON_URL))
     .then(response => {
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        console.log('Response received, parsing JSON...');
         return response.json();
     })
+    .then(decodeHuc8Topology)
     .then(data => {
-        console.log(`GeoJSON parsed successfully. Features: ${data.features.length}`);
-        console.log('Creating Leaflet layer...');
-        
+        console.log(`HUC8 topology decoded. Features: ${data.features.length}`);
+
         huc8Layer = L.geoJSON(data, {
             style: styleHUC8,
-            onEachFeature: onEachFeature
+            onEachFeature: onEachFeature,
+            renderer: huc8Renderer
         }).addTo(map);
         
         console.log('Layer added to map, fitting bounds...');
@@ -945,84 +993,133 @@ function showFloodSuccessModal(huc8, result) {
     if (okBtn) okBtn.addEventListener('click', hideFloodSuccessModal);
 })();
 
-// Function to generate flood map (3 server steps + progress overlay)
-async function generateFloodMap(huc8) {
-    const dateInput = document.getElementById('flood-date-input');
-    const timeInput = document.getElementById('flood-time-input');
+const FLOOD_JOB_POLL_MS = 4000;
+const FLOOD_JOB_TERMINAL_STATUSES = ['success', 'error', 'interrupted'];
+
+function setFloodStatus(html) {
     const statusDiv = document.getElementById('flood-map-status');
-    const generateBtn = document.getElementById('generate-flood-map-btn');
+    if (statusDiv) statusDiv.innerHTML = html;
+}
 
-    const date = dateInput.value;
-    const time = timeInput.value || '00:00:00';
+function setGenerateButtonBusy(busy) {
+    const btn = document.getElementById('generate-flood-map-btn');
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.textContent = busy ? 'Generating…' : 'Generate Flood Map';
+}
 
-    if (!date) {
-        statusDiv.innerHTML = '<span style="color: #e74c3c;">Please select a date</span>';
+function floodJobSleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+async function fetchJobJson(url, options) {
+    const response = await fetch(url, options);
+    let result;
+    try {
+        result = await response.json();
+    } catch (parseErr) {
+        throw new Error('Invalid response from API server.');
+    }
+    if (!response.ok || result.status !== 'success') {
+        throw new Error((result && result.message) || response.statusText || 'Request failed');
+    }
+    return result;
+}
+
+function floodJobResultSummary(job) {
+    return {
+        file_name: job.result_file ? job.result_file.split('/').pop() : '',
+        datetime: job.params ? job.params.datetime_str : '',
+    };
+}
+
+async function submitFloodJob(payload) {
+    const result = await fetchJobJson('./api/jobs/generate-flood-map/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    return result.job;
+}
+
+async function pollFloodJob(jobId, abortController) {
+    while (true) {
+        if (abortController.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        const result = await fetchJobJson('./api/jobs/status/' + encodeURIComponent(jobId) + '/');
+        if (FLOOD_JOB_TERMINAL_STATUSES.includes(result.job.status)) return result.job;
+        floodGenerateOverlayShow(result.job.message || 'Generating flood map…');
+        await floodJobSleep(FLOOD_JOB_POLL_MS);
+    }
+}
+
+function finishFloodJob(huc8, job) {
+    floodGenerateOverlayHide();
+    if (job.status !== 'success') {
+        setFloodStatus(`<span style="color: #e74c3c;">Error: ${job.message || job.status}</span>`);
         return;
     }
+    const summary = floodJobResultSummary(job);
+    const fileLine = summary.file_name ? `<br><span style="font-size: 11px;">File: ${summary.file_name}</span>` : '';
+    setFloodStatus(`<span style="color: #27ae60;">✓ Flood map generated successfully!</span>${fileLine}`);
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            showFloodSuccessModal(huc8, summary);
+        });
+    });
+}
 
-    const payload = { huc8: huc8, date: date, time: time };
-    const stepUi = [
-        { step: 1, label: 'Downloading HUC8 data…' },
-        { step: 2, label: 'Getting NWM streamflow data…' },
-        { step: 3, label: 'Generating flood inundation map…' },
-    ];
-
-    generateBtn.disabled = true;
-    generateBtn.textContent = 'Generating…';
-    statusDiv.innerHTML = '<span style="color: #3498db;">Generating flood map…</span>';
+async function watchFloodJob(huc8, job) {
     const abortController = new AbortController();
     currentFloodGenerateAbort = abortController;
+    setGenerateButtonBusy(true);
+    floodGenerateOverlayShow(job.message || 'Generating flood map…');
     try {
-        let lastResult = null;
-        for (let i = 0; i < stepUi.length; i++) {
-            floodGenerateOverlayShow(stepUi[i].label);
-            const response = await fetch(
-                './api/generate-flood-map/step/' + stepUi[i].step + '/',
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                    signal: abortController.signal,
-                }
-            );
-            let result;
-            try {
-                result = await response.json();
-            } catch (parseErr) {
-                floodGenerateOverlayHide();
-                statusDiv.innerHTML = '<span style="color: #e74c3c;">Error: Invalid response from API server.</span>';
-                return;
-            }
-            if (!response.ok || result.status !== 'success') {
-                floodGenerateOverlayHide();
-                const msg = (result && result.message) ? result.message : (response.statusText || 'Request failed');
-                statusDiv.innerHTML = `<span style="color: #e74c3c;">Error: ${msg}</span>`;
-                return;
-            }
-            lastResult = result;
-        }
-        floodGenerateOverlayHide();
-        if (lastResult && lastResult.file_name) {
-            statusDiv.innerHTML = `<span style="color: #27ae60;">✓ Flood map generated successfully!</span><br><span style="font-size: 11px;">File: ${lastResult.file_name}</span>`;
-        } else {
-            statusDiv.innerHTML = '<span style="color: #27ae60;">✓ Flood map generated successfully!</span>';
-        }
-        requestAnimationFrame(function () {
-            requestAnimationFrame(function () {
-                showFloodSuccessModal(huc8, lastResult);
-            });
-        });
+        finishFloodJob(huc8, await pollFloodJob(job.job_id, abortController));
     } catch (error) {
-        console.error('Error generating flood map:', error);
         floodGenerateOverlayHide();
         if (error && error.name === 'AbortError') {
-            statusDiv.innerHTML = '<span style="color: #64748b;">Generation was cancelled.</span>';
+            setFloodStatus('<span style="color: #64748b;">Stopped watching — the generation keeps running on the server.</span>');
         } else {
-            statusDiv.innerHTML = `<span style="color: #e74c3c;">Error: ${error.message}</span><br><span style="font-size: 11px;">Make sure the Tethys portal is running.</span>`;
+            console.error('Error watching flood job:', error);
+            setFloodStatus(`<span style="color: #e74c3c;">Error: ${error.message}</span>`);
         }
     } finally {
         currentFloodGenerateAbort = null;
-        generateBtn.disabled = false;
-        generateBtn.textContent = 'Generate Flood Map';
+        setGenerateButtonBusy(false);
+    }
+}
+
+async function generateFloodMap(huc8) {
+    const date = document.getElementById('flood-date-input').value;
+    const time = document.getElementById('flood-time-input').value || '00:00:00';
+    if (!date) {
+        setFloodStatus('<span style="color: #e74c3c;">Please select a date</span>');
+        return;
+    }
+    const rangeError = nwmDateRangeError(date);
+    if (rangeError) {
+        setFloodStatus(`<span style="color: #e74c3c;">${rangeError}</span>`);
+        return;
+    }
+    setFloodStatus(`<span style="color: #3498db;">Generating flood map for ${date} ${time}…</span>`);
+    try {
+        const job = await submitFloodJob({ huc8: huc8, date: date, time: time });
+        await watchFloodJob(huc8, job);
+    } catch (error) {
+        floodGenerateOverlayHide();
+        setFloodStatus(`<span style="color: #e74c3c;">Error: ${error.message}</span>`);
+    }
+}
+
+async function reattachActiveFloodJob(huc8) {
+    if (currentFloodGenerateAbort) return;
+    try {
+        const result = await fetchJobJson('./api/jobs/active/?huc8=' + encodeURIComponent(huc8));
+        if (result.job) {
+            setFloodStatus('<span style="color: #3498db;">A generation for this watershed is already running…</span>');
+            await watchFloodJob(huc8, result.job);
+        }
+    } catch (error) {
+        console.error('Could not check for an active job:', error);
     }
 }
